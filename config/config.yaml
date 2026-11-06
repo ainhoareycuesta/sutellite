@@ -1,0 +1,5 @@
+# Sutellite project configuration
+
+data:
+  interim_dir: "data/interim"
+  processed_dir: "data/processed"
