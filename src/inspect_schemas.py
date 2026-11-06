@@ -1,11 +1,14 @@
 
 from pathlib import Path
 import csv
+import os
+from dotenv import load_dotenv
+
+# Load local environment variables
+load_dotenv()
 
 # Original NASA FIRMS data directory
-DATA_DIR = Path(
-    r"C:\Users\rey.ainhoa\OneDrive - Universidad de Deusto\Documentos\datos_modis_viirs"
-)
+DATA_DIR = Path(os.getenv("SUTELLITE_DATA_DIR", ""))
 
 # Files to inspect
 FILES = {
