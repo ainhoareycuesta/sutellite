@@ -2,67 +2,126 @@
 from pathlib import Path
 import csv
 import os
+from collections import defaultdict
 from dotenv import load_dotenv
-
-# Load local environment variables
-load_dotenv()
-
-# Original NASA FIRMS data directory
-DATA_DIR = Path(os.getenv("SUTELLITE_DATA_DIR", ""))
-
-# Files to inspect
-FILES = {
-    "MODIS_ARCHIVE": DATA_DIR / "angola_modis" / "fire_archive_M-C61_838781.csv",
-    "MODIS_NRT": DATA_DIR / "angola_modis" / "fire_nrt_M-C61_838781.csv",
-    "VIIRS_ARCHIVE": DATA_DIR / "angola_viirs_snpp" / "fire_archive_SV-C2_838784.csv",
-    "VIIRS_NRT": DATA_DIR / "angola_viirs_snpp" / "fire_nrt_SV-C2_838784.csv",
-}
 
 
 def read_csv_header(file_path: Path) -> list[str]:
-    """Read the column names without loading the observations."""
+    """Read CSV column names without loading observations."""
     with file_path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.reader(file)
         return next(reader)
 
 
+def identify_product(file_path: Path) -> str:
+    """Identify the product type from its filename."""
+    if file_path.name.startswith("fire_archive"):
+        return "ARCHIVE"
+
+    if file_path.name.startswith("fire_nrt"):
+        return "NRT"
+
+    return "UNKNOWN"
+
+
+def identify_sensor(folder_name: str) -> str:
+    """Identify the sensor from the folder name."""
+    if folder_name.endswith("_modis"):
+        return "MODIS"
+
+    if folder_name.endswith("_viirs_snpp"):
+        return "VIIRS_SNPP"
+
+    if folder_name.endswith("_viirs_20"):
+        return "VIIRS_NOAA20"
+
+    if folder_name.endswith("_viirs_21"):
+        return "VIIRS_NOAA21"
+
+    return "UNKNOWN"
+
 
 def main():
-    print("SUTELLITE - CSV SCHEMA INSPECTION")
-    print("=" * 50)
+    load_dotenv()
+
+    data_dir = os.getenv("SUTELLITE_DATA_DIR")
+
+    if not data_dir:
+        raise SystemExit("ERROR: SUTELLITE_DATA_DIR is not configured.")
+
+    raw_dir = Path(data_dir)
+
+    if not raw_dir.is_dir():
+        raise SystemExit(f"ERROR: Data directory not found: {raw_dir}")
 
     schemas = {}
+    groups = defaultdict(list)
 
-    for product, file_path in FILES.items():
-        if not file_path.exists():
-            print(f"\n[ERROR] File not found: {file_path}")
-            continue
+    csv_files = sorted(raw_dir.rglob("*.csv"))
+
+    print("SUTELLITE - CSV SCHEMA INSPECTION")
+    print("=" * 60)
+    print(f"CSV files discovered: {len(csv_files)}")
+
+    for file_path in csv_files:
+        folder_name = file_path.parent.name
+        sensor = identify_sensor(folder_name)
+        product = identify_product(file_path)
 
         columns = read_csv_header(file_path)
-        schemas[product] = columns
 
-        print(f"\n{product}: {len(columns)} columns")
+        schemas[file_path] = columns
+        groups[(sensor, product)].append(file_path)
+
+    print("\nFILES INSPECTED")
+    print("-" * 60)
+
+    for (sensor, product), files in sorted(groups.items()):
+        print(f"{sensor} / {product}: {len(files)} files")
+
+        print("\nEXACT SCHEMA COMPARISON")
+        print("-" * 60)
+
+        for (sensor, product), files in sorted(groups.items()):
+            unique_schemas = {
+                tuple(schemas[file_path])
+                for file_path in files
+            }
+
+            print(
+                f"{sensor} / {product}: "
+                f"{len(unique_schemas)} unique schema(s)"
+            )
+
+            for schema in unique_schemas:
+                print(f"  Columns: {len(schema)}")
+                print(f"  Order: {', '.join(schema)}")
 
     if not schemas:
-        print("\nNo files were successfully inspected.")
+        print("\nNo CSV files found.")
         return
 
-    # Use all column names found across the products
     all_columns = set()
 
     for columns in schemas.values():
         all_columns.update(columns)
 
-    print("\n" + "=" * 50)
-    print("FIELD PRESENCE COMPARISON")
-    print("=" * 50)
+    print("\nFIELD PRESENCE COMPARISON")
+    print("-" * 60)
 
     for column in sorted(all_columns):
-        print(f"\n{column}")
+        present = sum(
+            column in columns
+            for columns in schemas.values()
+        )
 
-        for product, columns in schemas.items():
-            status = "PRESENT" if column in columns else "MISSING"
-            print(f"  {product}: {status}")
+        missing = len(schemas) - present
+
+        print(
+            f"{column:<20} "
+            f"Present: {present:>2}/{len(schemas)} "
+            f"Missing: {missing:>2}"
+        )
 
 
 if __name__ == "__main__":
