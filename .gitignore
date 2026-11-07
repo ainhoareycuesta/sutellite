@@ -7,3 +7,5 @@ __pycache__/
 
 # Local environment variables
 .env
+# Generated source audit reports
+reports/source_audits/
